@@ -16,7 +16,7 @@
 #' @return A list is returned with two data frame components:
 #'
 #'  \item{ \code{meta} }{A single row with Publication ID, type, year of publication and full citation.}
-#'  \item{ \code{Authors} }{\code{data.frame} of author names, order and IDs, can be of variable length.}
+#'  \item{ \code{authors} }{\code{data.frame} of author names, order and IDs, can be of variable length.}
 #'
 #' @examples \dontrun{
 #' #  To find all publications from 1998:
@@ -30,10 +30,9 @@
 #' API Reference:  http://wnapi.neotomadb.org/doc/resources/contacts
 #' @keywords IO connection
 #' @export
-#' 
 get_publication<- function(x, contactid, datasetid, author,
                            pubtype, year, search){
-  
+
   UseMethod('get_publication')
 
 }
@@ -54,40 +53,40 @@ get_publication<- function(x, contactid, datasetid, author,
 #' @param year Numeric publication year.
 #' @param search A character string to search for within the article citation.
 #' @export
-#' 
 get_publication.default <- function(x, contactid, datasetid, author,
                             pubtype, year, search){
 
-  base.uri <- 'http://wnapi.neotomadb.org/v1/data/publications'
+  base.uri <- "http://api.neotomadb.org/v1.5/data/publications"
 
   cl <- as.list(match.call())
   cl[[1]] <- NULL
-  
+
   if('x' %in% names(cl)){
     names(cl)[which(names(cl) == 'x')] <- 'pubid'
   }
   cl <- lapply(cl, eval, envir = parent.frame())
 
   #  Pass the parameters to param_check to make sure everything is kosher.
-  error_test <- param_check(cl)
+  error_test <- neotoma:::param_check(cl)
   if(error_test[[2]]$flag == 1){
     stop(paste0(unlist(error_test[[2]]$message), collapse='\n  '))
   } else {
     cl <- error_test[[1]]
   }
-  
-  
+
+
   neotoma_content <- httr::content(httr::GET(base.uri, query = cl), as = "text")
   if (identical(neotoma_content, "")) stop("")
   aa <- jsonlite::fromJSON(neotoma_content, simplifyVector = FALSE)
-  
-  if (aa[[1]] == 0){
-    stop(paste('Server returned an error message:\n', aa[[2]]), call. = FALSE)
+
+  if (getElement(aa, "success") == 0){
+    stop(paste('Server returned an error message:\n', getElement(aa, "status")), call. = FALSE)
   }
-  if (aa[[1]] == 1){
-    aa <- aa[[2]]
-    
-    rep_NULL <- function(x){ 
+  if (getElement(aa, "success") == 1){
+    # aa <- aa[[2]]
+    aa <- getElement(aa, "data")
+
+    rep_NULL <- function(x){
       if(is.null(x)){NA}
       else{
         if(class(x) == 'list'){
@@ -97,10 +96,10 @@ get_publication.default <- function(x, contactid, datasetid, author,
         }
       }
     }
-    
+
     # Clear NULLs from the output object & replace with NA values.
     aa <- lapply(aa, function(x)rep_NULL(x))
-    
+
     if(length(aa) > 1){
       cat('The API call was successful, you have returned ',
           length(aa), 'records.\n')
@@ -114,35 +113,35 @@ get_publication.default <- function(x, contactid, datasetid, author,
   } else {
 
     get_results <- function(x){
-      
+
       if(length(x) == 0){
         output <- list(meta = data.frame(id = NA,
                                          pub.type = NA,
                                          year = NA,
                                          citation = NA,
                                          stringsAsFactors=FALSE))
-        
+
         output$authors <- data.frame(contact.id = NA,
                                      order = NA,
                                      contact.name = NA,
                                                stringsAsFactors=FALSE)
-        
+
       } else {
-        
-        output <- list(meta = data.frame(id = as.numeric(x$PublicationID),
-                                         pub.type = x$PubType,
-                                         year = as.numeric(x$Year),
-                                         citation = x$Citation,
+
+        output <- list(meta = data.frame(id = as.numeric(x$publicationid),
+                                         pub.type = x$pubtype,
+                                         year = as.numeric(x$year),
+                                         citation = x$citation,
                                          stringsAsFactors=FALSE))
-        
+
         output$authors <- do.call(rbind.data.frame,
-          lapply(x$Authors, FUN=function(y){
-          data.frame(ContactID = y$ContactID,
-                     Order = y$Order,
-                     ContactName = as.character(y$ContactName),
+          lapply(x$authors, FUN=function(y){
+          data.frame(contactid = y$contactid,
+                     order = y$order,
+                     contactname = as.character(y$contactname),
                      stringsAsFactors=FALSE)}))
       }
-      
+
       output
     }
 
@@ -152,9 +151,9 @@ get_publication.default <- function(x, contactid, datasetid, author,
       output <- lapply(aa, get_results)
     }
   }
-  
+
   if('meta' %in% names(output)) output <- list(output)
-  
+
   output
 }
 
@@ -178,7 +177,7 @@ get_publication.dataset <- function(x, ... ){
 #' @export
 get_publication.dataset_list <- function(x, ... ){
   ids <- sapply(x, function(y)y$dataset.meta$dataset.id)
-  
+
   lapply(ids, function(x)get_publication(datasetid = x))
 }
 
@@ -189,11 +188,11 @@ get_publication.dataset_list <- function(x, ... ){
 #' @param ... objects passed from the generic.  Not used in the call.
 #' @export
 get_publication.download <- function(x, ... ){
-  
+
   pubs <- get_publication(datasetid = x$dataset$dataset.meta$dataset.id)
   if('meta' %in% names(pubs)) pubs <- list(pubs)
   pubs
-  
+
 }
 
 #' @title A function to get publications for datasets in the Neotoma Database using the API.
@@ -203,9 +202,9 @@ get_publication.download <- function(x, ... ){
 #' @param ... objects passed from the generic.  Not used in the call.
 #' @export
 get_publication.download_list <- function(x, ... ){
-  
+
   ids <- sapply(x, function(y)y$dataset$dataset.meta$dataset.id)
-  
+
   lapply(ids, function(x)get_publication(datasetid = x))
-  
+
 }
