@@ -97,7 +97,7 @@ get_download.default <- function(x, verbose = TRUE) {
 
   get.sample <- function(x) {
     # query Neotoma for data set
-    base.uri <- 'http://wnapi.neotomadb.org/v1/data/downloads'
+    base.uri <- 'http://api.neotomadb.org/v1.5/data/downloads'
 
     neotoma_content <- httr::content(httr::GET(paste0(base.uri, '/', x)), as = "text")
     if (identical(neotoma_content, "")) stop("")
@@ -114,13 +114,12 @@ get_download.default <- function(x, verbose = TRUE) {
     }
 
     if (isTRUE(all.equal(aa[[1]], 1))) {
-
       if (aa[[1]] == 1 & length(aa[[2]]) == 0) {
         # Is this the best way to deal with it?
         message(paste0("Dataset ID ", x, " has no associated record in Neotoma."))
         return(NULL)
       }
-        aa <- aa[[2]]
+        aa <- getElement(aa, "data")
 
         rep_NULL <- function(x) {
           # small function to recursively fill all NULL values with NAs.
@@ -139,7 +138,7 @@ get_download.default <- function(x, verbose = TRUE) {
         if (verbose) {
             message(strwrap(paste0("API call was successful. ",
                                    "Returned record for ",
-                                   aa[[1]]$Site$SiteName)))
+                                   aa[[1]]$site$sitename)))
         }
 
         # Here the goal is to reduce this list of lists to as
@@ -150,32 +149,35 @@ get_download.default <- function(x, verbose = TRUE) {
         # If there are actual stratigraphic samples with data
         # in the dataset returned.
 
-        if ('Samples' %in% nams  & length(aa1$Samples) > 0) {
 
+        if ('samples' %in% nams  & length(aa1$samples) > 0) {
           # Build the metadata for the dataset.
           dataset <- list(
-            site.data = data.frame(site.id = aa1$Site$SiteID,
-                                   site.name = aa1$Site$SiteName,
-                                   long = mean(unlist(aa1$Site[c('LongitudeWest', 'LongitudeEast')]),
+            site.data = data.frame(site.id = aa1$site$siteid,
+                                   site.name = aa1$site$sitename,
+                                   long = mean(unlist(aa1$site[c('longitudewest', 'longitudeeast')]),
                                                na.rm = TRUE),
-                                   lat = mean(unlist(aa1$Site[c('LatitudeNorth', 'LatitudeSouth')]),
+                                   lat = mean(unlist(aa1$site[c('latitudenorth', 'latitudesouth')]),
                                               na.rm = TRUE),
-                                   elev = aa1$Site$Altitude,
-                                   description = aa1$Site$SiteDescription,
-                                   long.acc = abs(aa1$Site$LongitudeWest - aa1$Site$LongitudeEast),
-                                   lat.acc = abs(aa1$Site$LatitudeNorth - aa1$Site$LatitudeSouth),
-                                   row.names = aa1$Site$SiteName,
+                                   elev = aa1$site$altitude,
+                                   description = aa1$site$sitedescription,
+                                   long.acc = abs(aa1$site$longitudewest - aa1$site$longitudeeast),
+                                   lat.acc = abs(aa1$site$latitudenorth - aa1$site$latitudesouth),
+                                   row.names = aa1$site$sitename,
                                    stringsAsFactors = FALSE),
-            dataset.meta = data.frame(dataset.id = aa1$DatasetID,
-                                      dataset.name = aa1$DatasetName,
-                                      collection.type = aa1$CollUnitType,
-                                      collection.handle = aa1$CollUnitHandle,
-                                      dataset.type =  aa1$DatasetType,
+            dataset.meta = data.frame(dataset.id = aa1$datasetid,
+                                      dataset.name = aa1$datasetname,
+                                      collection.type = aa1$collunittype,
+                                      collection.handle = aa1$collunittype,
+                                      dataset.type =  aa1$datasettype,
                                       stringsAsFactors = FALSE),
+            pub.data = data.frame(doi = aa1$doi,
+                                  db = aa1$databasename),
             pi.data = do.call(rbind.data.frame,
-                                aa1$DatasetPIs),
-            submission = data.frame(submission.date = strptime(aa1$NeotomaLastSub,
-                                                               '%m/%d/%Y'),
+                              aa1$datasetpis),
+            submission = data.frame(submission.date = as.Date(aa1$neotomalastsub$submissiondate),
+                                    # strptime(aa1$NeotomaLastSub,
+                                    #          '%m/%d/%Y'),
                                     submission.type = 'Last submission to Neotoma',
                                     stringsAsFactors = FALSE),
             access.date = Sys.time())
@@ -197,15 +199,17 @@ get_download.default <- function(x, verbose = TRUE) {
           } else {
 
             # copy to make indexing below easier?
-            samples <- aa1$Samples
+            samples <- aa1$samples
 
             # Build the metadata for each sample in the dataset.
             sample.meta <- do.call(rbind.data.frame,
                                    lapply(samples, `[`,
-                                          c("AnalysisUnitDepth",
-                                            "AnalysisUnitThickness",
-                                            "SampleID", "AnalysisUnitName"
-                                            )))
+                                          c("analysisunitdepth",
+                                            "analysisunitthickness",
+                                            "sampleid",
+                                            "analysisunitname")
+                                          )
+                                   )
 
             # Sample age data
             # Not all depths have the same number of chronologies,
@@ -230,9 +234,9 @@ get_download.default <- function(x, verbose = TRUE) {
             # This becomes problematic when we have `n` chronologies, plus samples without
             # named chronologies.
 
-            chron_list <- lapply(samples, '[[', 'SampleAges')
+            chron_list <- lapply(samples, '[[', 'sampleages')
 
-            chron_names <- unique(unlist(sapply(chron_list, function(x)unique(sapply(x, '[[', 'ChronologyName')))))
+            chron_names <- unique(unlist(sapply(chron_list, function(x)unique(sapply(x, '[[', 'chronologyname')))))
             chron_lengths <- sapply(chron_list, length)
             # When there is an NA aged sample in a record it makes everything worse
             # because it's not inherently a part of a chronology.
@@ -248,30 +252,30 @@ get_download.default <- function(x, verbose = TRUE) {
                 } else {
                   x <- rep(x, max(chron_lengths))
                   return(lapply(1:max(chron_lengths),
-                          function(y) {x[[y]]$ChronologyName <- chron_names[y]; x[[y]]}))
+                          function(y) {x[[y]]$chronologyname <- chron_names[y]; x[[y]]}))
                 }
               }
             } else if (all(is.na(chron_names))) {
               chron_names <- 'No chronology'
-              chron_list <- lapply(chron_list, function(x) {x[[1]]$ChronologyName <- chron_names; x})
+              chron_list <- lapply(chron_list, function(x) {x[[1]]$chronologyname <- chron_names; x})
             } else if (any(is.na(chron_names)) & all(diff(chron_lengths) == 0)) {
                 # This implies that many records have multiple chronology
                 # coverage, but that some don't & have NA coverage.
                 # In that case we want to duplicate the record, and then
                 # assign names to the chronologies.
                 reassign <- function(x, chron_names) {
-                  if (length(x) == length(na.omit(chron_names)) & !is.na(x[[1]]$ChronologyName)) {
+                  if (length(x) == length(na.omit(chron_names)) & !is.na(x[[1]]$chronologyname)) {
                     return(x)
                   } else {
                     x <- rep(x, max(chron_lengths))
                     return(lapply(1:max(chron_lengths),
-                                  function(y) {x[[y]]$ChronologyName <- chron_names[y]; x[[y]]}))
+                                  function(y) {x[[y]]$chronologyname <- chron_names[y]; x[[y]]}))
                   }
                 }
                 chron_list <- lapply(chron_list, reassign, chron_names = chron_names)
             }
 
-            chron_vectors <- sapply(chron_list, function(x)unique(sapply(x, '[[', 'ChronologyName')))
+            chron_vectors <- sapply(chron_list, function(x)unique(sapply(x, '[[', 'chronologyname')))
 
             if (is.list(chron_vectors)) {
               #  If it's a list then there are levels without common chronologies
@@ -281,19 +285,19 @@ get_download.default <- function(x, verbose = TRUE) {
               # Now, we inject an empty age for the missing chronology:
               for (i in unique_vectors) {
                 for (j in 1:length(chron_list)) {
-                  if (!i %in% sapply(chron_list[[j]], '[[', 'ChronologyName')) {
-                    if (any(is.na(sapply(chron_list[[j]], '[[', 'ChronologyName')))) {
+                  if (!i %in% sapply(chron_list[[j]], '[[', 'chronologyname')) {
+                    if (any(is.na(sapply(chron_list[[j]], '[[', 'chronologyname')))) {
                       # Clear any empty records:
-                      chron_list[[j]][[which(is.na(sapply(chron_list[[j]], '[[', 'ChronologyName')))]] <- NULL
+                      chron_list[[j]][[which(is.na(sapply(chron_list[[j]], '[[', 'chronologyname')))]] <- NULL
                     }
                     add_length <- length(chron_list[[j]]) + 1
 
-                    chron_list[[j]][[add_length]] <- list(AgeOlder = NA,
-                                                          Age = NA,
-                                                          AgeYounger = NA,
-                                                          ChronologyName = i,
-                                                          AgeType = NA,
-                                                          ChronologyID = NA)
+                    chron_list[[j]][[add_length]] <- list(ageolder = NA,
+                                                          age = NA,
+                                                          ageyounger = NA,
+                                                          chronologyname = i,
+                                                          agetype = NA,
+                                                          chronologyid = NA)
 
                   }
                 }
@@ -301,10 +305,10 @@ get_download.default <- function(x, verbose = TRUE) {
 
               # Now we just need to re-sort the lists:
               chron_list <- lapply(chron_list, function(x){
-                lapply(match(sapply(x, '[[', 'ChronologyName'), unique_vectors), function(y)x[[y]])
+                lapply(match(sapply(x, '[[', 'chronologyname'), unique_vectors), function(y)x[[y]])
               })
 
-              chron_vectors <- sapply(chron_list, function(x)unique(sapply(x, '[[', 'ChronologyName')))
+              chron_vectors <- sapply(chron_list, function(x)unique(sapply(x, '[[', 'chronologyname')))
 
             }
             # This fills in the end of a set of sample ages if there are NAs in a series,
@@ -323,20 +327,20 @@ get_download.default <- function(x, verbose = TRUE) {
 
             chrons <- try(unique(as.vector(unlist(chron_vectors))), silent = TRUE)
 
-            base.frame <- data.frame(age.older = rep(NA, nrow(sample.meta)),
-                                     age = rep(NA, nrow(sample.meta)),
-                                     age.younger = rep(NA, nrow(sample.meta)),
+            base.frame <- data.frame(chronology.id = rep(NA, nrow(sample.meta)),
                                      chronology.name = rep(NA, nrow(sample.meta)),
                                      age.type = rep(NA, nrow(sample.meta)),
-                                     chronology.id = rep(NA, nrow(sample.meta)),
+                                     age = rep(NA, nrow(sample.meta)),
+                                     age.younger = rep(NA, nrow(sample.meta)),
+                                     age.older = rep(NA, nrow(sample.meta)),
                                      dataset.id = rep(NA, nrow(sample.meta)))
 
-            colnames(base.frame) <- c('age.older', 'age',
-                                      'age.younger', 'chronology.name',
-                                      'age.type', 'chronology.id', 'dataset.id')
+            # colnames(base.frame) <- c('age.older', 'age',
+            #                           'age.younger', 'chronology.name',
+            #                           'age.type', 'chronology.id', 'dataset.id')
 
-            if (!class(chrons) == 'try-error') {
-              # Now we create the chronologies, so long as samples have assigned "SampleAges"
+            if (class(chrons) != 'try-error') {
+              # Now we create the chronologies, so long as samples have assigned "sampleages"
               # If they don't, then we stick in the empty `base.frame` and assign it a name "1"
               # Create the list:
               chron.list <- lapply(1:length(chrons), function(x) base.frame)
@@ -385,7 +389,9 @@ get_download.default <- function(x, verbose = TRUE) {
                 chron.list[[1]]$dataset.id <- dataset$dataset.meta$dataset.id
               }
 
-              default_chron <- which(sapply(chron.list, function(x)x$chronology.id[1]) == aa1$DefChronologyID)
+              default_chron_id <- tryCatch(aa1$defchronologyid[[1]]$chronologyid,
+                                           error = function(e) NA)
+              default_chron <- which(sapply(chron.list, function(x) x$chronology.id[1]) == default_chron_id)
               if (length(default_chron) > 1) { default_chron <- default_chron[1] }
 
               if (length(default_chron) == 0) {
@@ -402,7 +408,7 @@ get_download.default <- function(x, verbose = TRUE) {
 
             # sample names - can be NULL hence replace with NA if so
             tmp <- sapply(sample.names <-
-                          lapply(samples, `[[`, "SampleUnitName"), is.null)
+                          lapply(samples, `[[`, "sampleunitname"), is.null)
             sample.names[tmp] <- NA
 
             # stick all that together, setting names, & reordering cols
@@ -422,7 +428,7 @@ get_download.default <- function(x, verbose = TRUE) {
             # sample data/counts
             # 1) extract each SampleData component & then rbind. Gives a
             # list of data frames
-            sample.data <- lapply(lapply(samples, `[[`, "SampleData"),
+            sample.data <- lapply(lapply(samples, `[[`, "sampledata"),
                                   function(x) do.call(rbind.data.frame, x))
 
             if (length(unlist(sample.data)) == 0) {
@@ -433,13 +439,13 @@ get_download.default <- function(x, verbose = TRUE) {
             if (any(sapply(sample.data, length) == 0)) {
               sample.data <- lapply(sample.data, function(x) {
                 if(length(x) == 0) {
-                  x <- data.frame(TaxonName = NA,
-                                  VariableUnits = NA,
-                                  VariableElement = NA,
-                                  VariableContext = NA,
-                                  TaxaGroup = NA,
-                                  Value = NA,
-                                  EcolGroupID = NA,
+                  x <- data.frame(taxonname = NA,
+                                  variableunits = NA,
+                                  variableelement = NA,
+                                  variablecontext = NA,
+                                  taxagroup = NA,
+                                  value = NA,
+                                  ecolgroupid = NA,
                                   stringsAsFactors = FALSE)
                 }
                 return(x)
@@ -458,20 +464,44 @@ get_download.default <- function(x, verbose = TRUE) {
             # We're going to isolate the count data and clean it up by
             # excluding lab data and charcoal.  The charcoal exclusion
             # needs some further consideration.
+            #
+            # colnames(sample.data) <- c('taxon.name', 'variable.units',
+            #                            'variable.element', 'variable.context',
+            #                            'taxon.group', 'value',
+            #                            'ecological.group', 'sample.id')
+            #
+            # # get the table:
+            # cast_table <- reshape2::dcast(sample.data,
+            #                     taxon.name + variable.units + variable.element +
+            #                       variable.context + taxon.group +
+            #                       ecological.group ~ sample.id,
+            #                     value.var = "value", fun.aggregate = sum)
+            #
+            # cast_table <- cast_table[!is.na(cast_table$taxon.name), ]
+            # taxon.list <- cast_table[ ,1:6]
 
-            colnames(sample.data) <- c('taxon.name', 'variable.units',
-                                       'variable.element', 'variable.context',
-                                       'taxon.group', 'value',
-                                       'ecological.group', 'sample.id')
+            colnames(sample.data) <- colnames(sample.data) %>%
+              stringr::str_replace_all("ecolgroupid", "ecological.group") %>%
+              stringr::str_replace_all("taxa", "taxon") %>%
+              stringr::str_replace_all("taxon", "taxon\\.") %>%
+              stringr::str_replace_all("variable", "variable\\.")
 
-            # get the table:
-            cast_table <- reshape2::dcast(sample.data,
-                                taxon.name + variable.units + variable.element +
-                                  variable.context + taxon.group +
-                                  ecological.group ~ sample.id, value.var = "value", fun.aggregate = sum)
-
-            cast_table <- cast_table[!is.na(cast_table$taxon.name), ]
-            taxon.list <- cast_table[ ,1:6]
+            cast_table <- sample.data %>%
+              dplyr::arrange(taxon.name) %>%
+              tidyr::pivot_wider(id_cols = c(taxon.name,
+                                             variable.units,
+                                             variable.element,
+                                             variable.context,
+                                             taxon.group,
+                                             ecological.group),
+                                 names_from = sample.id,
+                                 values_from = value,
+                                 values_fn = sum,
+                                 values_fill = 0) %>%
+              dplyr::filter(!is.na(taxon.name))
+            taxon.list <- cast_table %>%
+              dplyr::select(1:6) #%>%
+              # dplyr::mutate(alias = taxon.name)
 
             # Now we check for any duplicated names and give them an alias
             # that binds the name with the variable units.
@@ -511,7 +541,7 @@ get_download.default <- function(x, verbose = TRUE) {
                   taxon.list$alias[taxon.list$taxon.name %in% i] <- sapply(1:nrow(dup_rows),
                                                                            function(x) {
                                                                              paste0(taxon.list$alias[taxon.list$taxon.name %in% i][x], '|',
-                                                                                             paste0(as.character(t(dup_rows)[,x]), collapse = '|')) })
+                                                                                    paste0(as.character(t(dup_rows)[,x]), collapse = '|')) })
                 }
               }
 
@@ -523,24 +553,42 @@ get_download.default <- function(x, verbose = TRUE) {
             }
 
             # This pulls out charcoal & lab data to stick in a different data.frame.
-            take <- !(taxon.list$taxon.group == "Laboratory analyses" |
-                        taxon.list$taxon.group == "Charcoal")
-
-            count.data <- t(cast_table[take, 7:ncol(cast_table)])
+            take <- !(taxon.list$taxon.group %in% c("charcoal",
+                                                   "Charcoal",
+                                                   "laboratory analyses",
+                                                   "Laboratory analyses"))
+            # take <- !(taxon.list$taxon.group == "charcoal" |
+            #             taxon.list$taxon.group == "Charcoal" |
+            #             taxon.list$taxon.group == "laboratory analyses" |
+            #             taxon.list$taxon.group == "Laboratory analyses")
             if ('alias' %in% colnames(taxon.list)) {
-              colnames(count.data) <- taxon.list$alias[take]
+              taxon_names <- taxon.list$alias[take]
             } else {
-              colnames(count.data) <- taxon.list$taxon.name[take]
+              taxon_names <- taxon.list$taxon.name[take]
             }
+            count.data <- cast_table %>%
+              dplyr::slice(which(take)) %>%
+              dplyr::select(-c(1:6)) %>%
+              dplyr::mutate(taxon.name = taxon_names,
+                            .before = 1) %>%
+              tidyr::pivot_longer(-1,
+                                  names_to = "sample.id") %>%
+              tidyr::pivot_wider(names_from = taxon.name)
+
+            # count.data0 <- t(cast_table[take, 7:ncol(cast_table)])
+            # if ('alias' %in% colnames(taxon.list)) {
+            #   colnames(count.data) <- taxon.list$alias[take]
+            # } else {
+            #   colnames(count.data) <- taxon.list$taxon.name[take]
+            # }
 
             # Pull out the lab data and treat it in
             # the same way as the previous:
-
-            if (sum(take) > 0) {
+            if (sum(!take) > 0) {
               lab.data <- t(cast_table[!take, 7:ncol(cast_table)])
               colnames(lab.data) <- taxon.list$alias[!take]
             } else {
-                lab.data <- NULL
+              lab.data <- NULL
             }
 
             # stick all this together
@@ -554,7 +602,7 @@ get_download.default <- function(x, verbose = TRUE) {
             class(aa) <- c('download', 'list')
           }
         }
-        if ((!'Samples' %in% nams) | length(aa1$Samples) == 0) {
+        if ((!'samples' %in% nams) | length(aa1$samples) == 0) {
           message('Dataset contains no sample data.')
           return(NULL)
         }
