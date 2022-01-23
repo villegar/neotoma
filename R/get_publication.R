@@ -134,15 +134,16 @@ get_publication.default <- function(x, contactid, datasetid, author,
                                          citation = x$citation,
                                          stringsAsFactors=FALSE))
 
-        output$authors <- do.call(rbind.data.frame,
-          lapply(x$authors, FUN=function(y){
-          data.frame(contactid = y$contactid,
-                     order = y$order,
-                     contactname = as.character(y$contactname),
-                     stringsAsFactors=FALSE)}))
+        # output$authors <- do.call(rbind.data.frame,
+        #   lapply(x$authors, FUN=function(y){
+        #   data.frame(contactid = y$contactid,
+        #              order = y$order,
+        #              contactname = as.character(y$contactname),
+        #              stringsAsFactors=FALSE)}))
       }
 
       output
+
     }
 
     if(length(aa) < 1) {
@@ -154,7 +155,8 @@ get_publication.default <- function(x, contactid, datasetid, author,
 
   if('meta' %in% names(output)) output <- list(output)
 
-  output
+  output %>%
+    purrr::flatten_dfr()
 }
 
 #' @title A function to get publications for datasets in the Neotoma Database using the API.
