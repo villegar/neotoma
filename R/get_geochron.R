@@ -7,7 +7,7 @@
 #' @importFrom httr GET content
 #' @param x A numeric dataset ID or a vector of numeric dataset IDs, or an object of class of class \code{site}, \code{dataset}, \code{dataset_list}, \code{download} or \code{download_list} for which geochrons are required.
 #' @param verbose logical; should messages on API call be printed?
-#' 
+#'
 #' @author Simon J. Goring \email{simon.j.goring@@gmail.com}
 #' @return This command returns either an object of class \code{"try-error"}' (see \code{\link{try}}) defined by the error returned
 #'    from the Neotoma API call, or a \code{geochronologic} object, which is a list with two components, a \code{dataset} and a geochronology table, a \code{data.frame} with the following components:
@@ -25,14 +25,14 @@
 #'
 #'  A full data object containing all the relevant geochronological data available for a dataset.
 #' @examples \dontrun{
-#' #  Search for the sites around Marion Lake, BC.  I want to find sites within 
+#' #  Search for the sites around Marion Lake, BC.  I want to find sites within
 #' #  about 1km.
-#' 
+#'
 #' marion <- get_site(sitename = "Marion Lake*")
-#' 
+#'
 #' marion_close <- get_closest(marion, n = 10, buffer = 1)
-#' 
-#' #  Returns 116 records (as of 13/07/2015).  These are the pollen records though, 
+#'
+#' #  Returns 116 records (as of 13/07/2015).  These are the pollen records though,
 #' #  we want the sites:
 #' geochron.records <- get_geochron(marion_close)
 #'
@@ -74,14 +74,14 @@ get_geochron.default <- function(x, verbose = TRUE){
   # Get sample is a function because we can now get
   # one or more geochronologies at a time.
   get_sample <- function(x){
-    
+
     base.uri <- 'http://wnapi.neotomadb.org/v1/apps/geochronologies'
-    
+
     # query Neotoma for data set
     neotoma_content <- httr::content(httr::GET(paste0(base.uri, '/?datasetid=', x)), as = "text")
     if (identical(neotoma_content, "")) stop("")
     aa <- jsonlite::fromJSON(neotoma_content, simplifyVector = FALSE)
-    
+
     # Might as well check here for error and bail
     if (inherits(aa, "try-error"))
         return(aa)
@@ -103,8 +103,8 @@ get_geochron.default <- function(x, verbose = TRUE){
     if (isTRUE(all.equal(aa[[1]], 1) & length(aa[[2]]) > 0)) {
       # The API returned a record with geochron data.
       aa <- aa[[2]]
-      
-      rep_NULL <- function(x){ 
+
+      rep_NULL <- function(x){
         if (is.null(x)) {NA}
         else {
           if (class(x) == 'list') {
@@ -114,21 +114,21 @@ get_geochron.default <- function(x, verbose = TRUE){
           }
         }
       }
-      
+
       aa <- lapply(aa, function(x)rep_NULL(x))
-      
+
       if (verbose) {
           message(strwrap(paste0("API call was successful.")))
       }
 
       # If there are actual stratigraphic samples
       # with data in the dataset returned.
-      
+
       # We have to pull the dataset information from the `download`:
       dl <- try(jsonlite::fromJSON(paste0('http://wnapi.neotomadb.org/v1/data/downloads/', x)))[[2]]
-      
+
       dl <- lapply(dl, function(x)rep_NULL(x))
-      
+
       dataset <- list(
         site.data = data.frame(site.id = dl$Site$SiteID,
                                site.name = dl$Site$SiteName,
@@ -155,9 +155,9 @@ get_geochron.default <- function(x, verbose = TRUE){
                                 submission.type = 'Last submission to Neotoma',
                                 stringsAsFactors = FALSE),
         access.date = Sys.time())
-      
+
       class(dataset) <- c('dataset', 'list')
-      
+
       pull.rec <- function(x){
 
         data.frame(sample.id = x$SampleID,
@@ -179,83 +179,83 @@ get_geochron.default <- function(x, verbose = TRUE){
       out <- list(dataset = dataset,
                   geochron   = do.call(rbind.data.frame, lapply(aa[[1]], pull.rec)))
       class(out) <- c('geochronologic', 'list')
-      
+
       out
     }
 
     out
   }
-  
+
   out <- lapply(x, function(x)try(get_sample(x)))
   for (i in length(out):1) {
-    if ('try-error' %in% class(out[[i]])) out[[i]] <- NULL 
+    if ('try-error' %in% class(out[[i]])) out[[i]] <- NULL
   }
-  
+
   if (length(out) == 0) {
     # It's possible that we had some successes, if not then we need to return
     # an error.
     stop('There were no geochronological records returned.', call. = FALSE)
   }
-  
+
   class(out) <- c('geochronologic_list', 'list')
-  
+
   out
 
 }
 
 #' @export
 get_geochron.dataset <- function(x, verbose = TRUE){
-  
+
   # Updated the processing here. There is no need to be fiddling with
   # call. Use missing() to check for presence of argument
   # and then process as per usual
-  
+
   datasetid <- x$dataset.meta$dataset.id
-  
+
   if (!x$dataset.meta$dataset.type %in% 'geochronologic') {
     stop(paste0('The dataset ID ', x$dataset.meta$dataset.id,
                    ' is not associated with a geochronology object.'))
   } else {
     geochron <- get_geochron(datasetid)[[1]]
   }
-  
+
   geochron[[1]] <- x
-  
+
   class(geochron) <- c('geochronologic', 'list')
-  
+
   geochron
-  
+
 }
 
 #' @export
 get_geochron.dataset_list <- function(x, verbose = TRUE){
-  
+
   # Updated the processing here. There is no need to be fiddling with
   # call. Use missing() to check for presence of argument
   # and then process as per usual
-  
+
   dataset.types <- unlist(lapply(x, FUN = function(x)x$dataset$dataset.type))
-  
+
   if (all(!dataset.types %in% 'geochronologic')) {
     # There are no geochronological records in the dataset:
     stop('This set contains no geochronological datasets.  Use get_download instead.')
   }
-  
+
   if (any(!dataset.types %in% 'geochronologic')) {
     # There are no geochronological records in the dataset:
     message('This dataset contains records that are not geochronological datasets.  Only geochronological datasets will be returned.')
     x <- x[dataset.types %in% 'geochronologic']
   }
-  
+
   if (length(x) > 1) {
     class(x) <- c('dataset_list', 'list')
-    
+
     aa <- lapply(x, function(y) {
       get_geochron(y, verbose = FALSE)
     })
-    
+
     class(aa) <- c('geochronologic_list', 'list')
-    
+
   } else {
     aa <- get_geochron(x, verbose = FALSE)
   }
@@ -265,11 +265,11 @@ get_geochron.dataset_list <- function(x, verbose = TRUE){
 
 #' @export
 get_geochron.site <- function(x, verbose = TRUE){
-  
+
   dataset <- get_dataset(x)
-  
+
   dataset.types <- unlist(lapply(dataset, FUN = function(x)x$dataset.meta$dataset.type))
-  
+
   if (any(!dataset.types %in%   'geochronologic')) {
     if (all(!dataset.types %in% 'geochronologic')) {
       stop('This set contains no geochronological datasets.  Use get_download instead.')
@@ -279,14 +279,14 @@ get_geochron.site <- function(x, verbose = TRUE){
       class(dataset) <- c('dataset_list', 'list')
     }
   }
-  
+
   aa <- lapply(dataset, function(y){
     out <- get_geochron(y)
     out
   })
-  
+
   class(aa) <- c('geochronologic_list', 'list')
-  
+
   aa
 
 }

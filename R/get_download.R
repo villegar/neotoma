@@ -526,7 +526,7 @@ get_download.default <- function(x, verbose = TRUE) {
                 # 3. variable.unit - not sure how often the same element is expressed in different units.
                 # 4. context|element
                 dup_rows <- dup_rows[,c('variable.context','variable.element',
-                                        'variable.units')]
+                                        'variable.units', 'ecological.group')]
 
                 # Remove any columns where all elements are NA:
                 dup_rows <- dup_rows[, apply(dup_rows, 2, function(x) { !all(is.na(x)) } )]
@@ -573,6 +573,9 @@ get_download.default <- function(x, verbose = TRUE) {
                             .before = 1) %>%
               tidyr::pivot_longer(-1,
                                   names_to = "sample.id") %>%
+              dplyr::group_by(taxon.name, sample.id) %>%
+              dplyr::mutate(value = sum(value, na.rm = TRUE)) %>%
+              dplyr::ungroup() %>%
               tidyr::pivot_wider(names_from = taxon.name)
 
             # count.data0 <- t(cast_table[take, 7:ncol(cast_table)])
