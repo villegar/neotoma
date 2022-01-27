@@ -65,6 +65,7 @@ get_dates <- function(x) {
                     age.type = agetype) %>%
       dplyr::arrange(geo.chron.type, age) %>%
       dplyr::mutate(dataset.id = collectionunit$dataset$datasetid,
+                    handle = collectionunit$handle,
                     .before = 1) %>%
       dplyr::filter(!is.na(age)) %>%
       dplyr::mutate(dataset.id = as.integer(dataset.id),

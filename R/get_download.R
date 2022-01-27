@@ -168,7 +168,7 @@ get_download.default <- function(x, verbose = TRUE) {
             dataset.meta = data.frame(dataset.id = aa1$datasetid,
                                       dataset.name = aa1$datasetname,
                                       collection.type = aa1$collunittype,
-                                      collection.handle = aa1$collunittype,
+                                      collection.handle = aa1$collunithandle,
                                       dataset.type =  aa1$datasettype,
                                       stringsAsFactors = FALSE),
             pub.data = data.frame(doi = aa1$doi,
