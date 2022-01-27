@@ -102,7 +102,8 @@ get_geochron.default <- function(x, verbose = TRUE){
 
     if (isTRUE(all.equal(aa[[1]], 1) & length(aa[[2]]) > 0)) {
       # The API returned a record with geochron data.
-      aa <- aa[[2]]
+      # aa <- aa[[2]]
+      aa <- getElement(aa, "data")
 
       rep_NULL <- function(x){
         if (is.null(x)) {NA}
